@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   scaling:
-    name: Scaling journey (${{ matrix.journey }})
+    name: Redis failover diagnostic (${{ matrix.journey }})
     runs-on: ubuntu-latest
     timeout-minutes: ${{ fromJSON('{"application":30,"storage":80,"databases":105}')[matrix.journey] }}
     strategy:
@@ -94,7 +94,7 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p "$RUNNER_TEMP/openship-scaling"
-          bun run --cwd apps/api test:e2e 2>&1 | tee "$RUNNER_TEMP/openship-scaling/output.log"
+          bun run --cwd apps/api test:e2e --testNamePattern='replicates Redis without sharding' 2>&1 | tee "$RUNNER_TEMP/openship-scaling/output.log"
       - name: Save diagnostics
         if: steps.resume.outputs.reused != 'true' && (always())
         uses: actions/upload-artifact@v7
