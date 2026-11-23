@@ -4,7 +4,7 @@ import { repos } from "@repo/db";
 import type { RateLimitConfig } from "@repo/adapters";
 import { normalizeEdgePages, safeErrorMessage } from "@repo/core";
 import type { ServerDependencies } from "../../../servers";
-import { withOpenRestyRouting } from "../../lib/openresty-paths";
+import { withOpenRestyRouting, withServerEdgeRouting } from "../../lib/openresty-paths";
 import { audit, operationAuditContext } from "../../lib/audit-emitter";
 import { requireConnectedServer } from "./server-access";
 import { scanServer, applyServerModule } from "./server-modules.service";
@@ -20,12 +20,12 @@ export const serverMaintenanceResources: Pick<ServerDependencies["resources"],
   "listModules" | "scanModules" | "applyModule" | "getRateLimit" | "updateRateLimit" | "getEdgePages" | "updateEdgePages"> = {
   async getEdgePages(ctx, id) {
     await requireConnectedServer(ctx, id);
-    return { config: await withOpenRestyRouting(id, routing => routing.getEdgePages()) };
+    return { config: await withServerEdgeRouting(id, routing => routing.getEdgePages()) };
   },
   async updateEdgePages(ctx, id, input) {
     await requireConnectedServer(ctx, id);
     const config = normalizeEdgePages(input, "server");
-    await withOpenRestyRouting(id, routing => routing.setEdgePages(config));
+    await withServerEdgeRouting(id, routing => routing.setEdgePages(config));
     audit.recordAsync(operationAuditContext(ctx), { eventType: "server:admin", resourceType: "server", resourceId: id });
     return { config };
   },

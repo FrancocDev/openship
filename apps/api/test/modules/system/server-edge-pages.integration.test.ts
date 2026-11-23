@@ -8,6 +8,7 @@ import { healthRoutes } from "../../../src/modules/health/health.routes";
 import { handleApiError } from "../../../src/middleware/error-handler";
 const edge = vi.hoisted(() => ({ getEdgePages: vi.fn(), setEdgePages: vi.fn() }));
 vi.mock("@repo/platform/engine/lib/openresty-paths", () => ({
+  withServerEdgeRouting: async (_id: string, work: (routing: typeof edge) => unknown) => work(edge),
   withOpenRestyRouting: async (_id: string, work: (routing: typeof edge) => unknown) => work(edge),
 }));
 const app = new Hono()

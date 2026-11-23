@@ -1,7 +1,9 @@
 import { reportCaughtError as observeCaughtError, diagnostics as errorDiagnostics } from "@repo/core/diagnostics";
 import {
   NginxProvider,
+  containerEdgeProvider,
   detectOpenRestyPaths,
+  resolveOurEdgeContainer,
   rootOrDegrade,
   type OpenRestyPaths,
 } from "@repo/adapters";
@@ -38,10 +40,7 @@ export async function invalidateOpenRestyPaths(serverId?: string): Promise<void>
   await store.invalidateByPrefix("");
 }
 
-export async function withOpenRestyRouting<T>(
-  serverId: string,
-  fn: (routing: NginxProvider) => Promise<T>,
-): Promise<T> {
+async function assertReachable(serverId: string): Promise<void> {
   // Fast-fail an unreachable/offline box in ~2.5s instead of paying the full
   // 15-20s SSH-connect timeout (doubled by withExecutor's reconnect retry). This
   // is the single reason the server "Security" tab appeared to hang forever: a
@@ -52,6 +51,43 @@ export async function withOpenRestyRouting<T>(
   if (!reachable) {
     throw new Error("Server is not reachable over SSH right now.");
   }
+}
+
+/**
+ * Run `fn` against the edge that actually serves `serverId`'s traffic.
+ *
+ * A box running our `openship-edge` container keeps its OpenResty, Lua bundle and
+ * vhosts inside that container, so commands must run through `docker exec` and
+ * files must land in the bind-mounted host state dir — the same provider the
+ * deploy platform builds ({@link containerEdgeProvider}). Driving the host binary
+ * instead checks for Lua files the host never has and writes vhosts nothing reads
+ * (#1864). Boxes with a bare host OpenResty fall through to
+ * {@link withOpenRestyRouting}.
+ */
+export async function withServerEdgeRouting<T>(
+  serverId: string,
+  fn: (routing: NginxProvider) => Promise<T>,
+): Promise<T> {
+  await assertReachable(serverId);
+  const container = await sshManager.withExecutor(serverId, (executor) =>
+    resolveOurEdgeContainer(executor).catch((diagnosticFailure) => {
+      observeCaughtError(diagnosticFailure, "platform/engine/lib/openresty-paths");
+      return null;
+    }),
+  );
+  if (!container) return withOpenRestyRouting(serverId, fn);
+  return sshManager.withExecutor(serverId, async (executor) =>
+    fn(
+      await containerEdgeProvider(executor, container, await resolveEdgeProviderOptions(serverId)),
+    ),
+  );
+}
+
+export async function withOpenRestyRouting<T>(
+  serverId: string,
+  fn: (routing: NginxProvider) => Promise<T>,
+): Promise<T> {
+  await assertReachable(serverId);
 
   return sshManager.withExecutor(serverId, async (executor) => {
     // `applyRateLimit` — the one write behind this helper — edits the root-owned
